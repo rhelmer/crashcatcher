@@ -1,27 +1,28 @@
 package main
 
 import (
-	"log"
-	"net/http"
+	"crypto/rand"
 	"encoding/json"
-	"io/ioutil"
 	"fmt"
 	"io"
-	"crypto/rand"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"os/exec"
 )
 
 var rawcrashdir = "./crashdata/raw"
 var processedcrashdir = "./crashdata/processed"
 var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
+
 // number of cores available for processing
 var maxprocs = 1
 
 type Crash struct {
 	ProductName string
-	Version string
-	CrashID string
-	Minidump []byte
+	Version     string
+	CrashID     string
+	Minidump    []byte
 }
 
 func (c *Crash) saveMeta() error {
@@ -43,7 +44,7 @@ var procsem = make(chan int, maxprocs)
 func (c *Crash) process() {
 	procsem <- 1
 	out, err := exec.Command(mdswpath, "-m",
-		rawcrashdir + "/" + c.CrashID + ".dump").Output()
+		rawcrashdir+"/"+c.CrashID+".dump").Output()
 
 	if err != nil {
 		log.Println("ERROR during processing of", c.CrashID, err)
@@ -54,7 +55,7 @@ func (c *Crash) process() {
 		log.Println("ERROR could not save processed crash", c.CrashID,
 			err)
 	}
-		log.Println("Crash processed and saved:", c.CrashID)
+	log.Println("Crash processed and saved:", c.CrashID)
 	<-procsem
 }
 
@@ -68,11 +69,11 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	crash := Crash {
+	crash := Crash{
 		ProductName: r.FormValue("ProductName"),
-		Version: r.FormValue("Version"),
-		CrashID: MakeCrashID(),
-		Minidump: dumpfile,
+		Version:     r.FormValue("Version"),
+		CrashID:     MakeCrashID(),
+		Minidump:    dumpfile,
 	}
 	log.Println("Crash received: ", crash.CrashID)
 	if err := crash.saveMeta(); err != nil {
