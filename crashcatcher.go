@@ -82,6 +82,7 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	go process(crashid, minidump)
 	log.Println("Crash dump sent to processor:", crashid)
+	fmt.Fprintf(w, "CrashID=bp-%v", crashid)
 }
 
 func MakeCrashID() string {
