@@ -11,6 +11,8 @@ set -e
 
 # Checkout and build Breakpad
 echo "PREFIX: ${PREFIX:=`pwd`/build/breakpad}"
+mkdir build
+cd build
 svn co http://google-breakpad.googlecode.com/svn/trunk google-breakpad
 cd google-breakpad
 ./configure --prefix=${PREFIX}
