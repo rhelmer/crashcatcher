@@ -3,18 +3,17 @@ package main
 import (
 	"log"
 	"net/http"
-	"net/url"
 	"encoding/json"
 	"io/ioutil"
 	"fmt"
 	"io"
 	"crypto/rand"
+	"os/exec"
 )
 
 type Crash struct {
 	ProductName string
 	Version string
-	Dump []byte
 	CrashID string
 }
 
@@ -27,29 +26,37 @@ func (c *Crash) saveMeta() error {
 	return ioutil.WriteFile(filename, b, 0600)
 }
 
-func (c *Crash) saveDump() error {
-	filename := "crashes/" + c.CrashID + ".dump"
-	return ioutil.WriteFile(filename, c.Dump, 0600)
+func (c *Crash) process() ([]byte, error) {
+	var path = "./build/breakpad/bin/minidump_stackwalk"
+	out, err := exec.Command(path, "-m", "crashes/" + c.CrashID + ".dump").Output()
+	return out, err
 }
 
 func crashHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(4096)
 	log.Println("Incoming crash")
-	crash := makecrash(r.Form)
-	log.Println("Crash collected: ", crash.CrashID)
-	crash.saveMeta()
-	log.Println("Crash metdata saved: ", crash.CrashID)
-	crash.saveDump()
-	log.Println("Crash dump saved: ", crash.CrashID)
-}
-
-func makecrash(form url.Values) Crash {
-	return Crash {
-		ProductName: form.Get("ProductName"),
-		Version: form.Get("Version"),
-		Dump: []byte(form.Get("dump")),
+	var file, _, err = r.FormFile("upload_file_minidump")
+	if err != nil {
+		fmt.Println(err)
+	}
+	dumpfile, err := ioutil.ReadAll(file)
+	if err != nil {
+		fmt.Println(err)
+	}
+	crash := Crash {
+		ProductName: r.FormValue("ProductName"),
+		Version: r.FormValue("Version"),
 		CrashID: makecrashid(),
 	}
+	log.Println("Crash collected: ", crash.CrashID, crash)
+	crash.saveMeta()
+	log.Println("Crash metdata saved: ", crash.CrashID)
+	filename := "crashes/" + crash.CrashID + ".dump"
+	ioutil.WriteFile(filename, dumpfile, 0600)
+	log.Println("Crash dump saved: ", crash.CrashID)
+	var out, _ = crash.process()
+	processedfilename := "crashes/processed/" + crash.CrashID + ".txt"
+	ioutil.WriteFile(processedfilename, out, 0600)
+	log.Println("Crash processed: ", crash.CrashID)
 }
 
 func makecrashid() string {
@@ -70,5 +77,8 @@ func uuid() string {
 func main() {
 	http.HandleFunc("/submit", crashHandler)
 	log.Println("Listening on port 8080")
-        http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("ListenAndServe:", err)
+	}
 }
