@@ -62,7 +62,7 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 		CrashID: MakeCrashID(),
 		Minidump: dumpfile,
 	}
-	log.Println("Crash received: ", crash.CrashID, crash)
+	log.Println("Crash received: ", crash.CrashID)
 	crash.saveMeta()
 	log.Println("Crash metadata saved: ", crash.CrashID)
 	crash.saveDump()
