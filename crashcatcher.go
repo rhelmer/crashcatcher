@@ -1,4 +1,4 @@
-package main
+package crashcatcher
 
 import (
 	"log"
@@ -18,6 +18,7 @@ type Crash struct {
 	ProductName string
 	Version string
 	CrashID string
+	Minidump []byte
 }
 
 func (c *Crash) saveMeta() error {
@@ -29,11 +30,20 @@ func (c *Crash) saveMeta() error {
 	return ioutil.WriteFile(filename, b, 0600)
 }
 
-func (c *Crash) process() ([]byte, error) {
+func (c *Crash) saveDump() error {
+	filename := rawcrashdir + "/" + c.CrashID + ".dump"
+	return ioutil.WriteFile(filename, c.Minidump, 0600)
+}
+
+func (c *Crash) process() error {
 	var path = "./build/breakpad/bin/minidump_stackwalk"
 	out, err := exec.Command(path, "-m",
 		rawcrashdir + "/" + c.CrashID + ".dump").Output()
-	return out, err
+	if err != nil {
+		log.Println(err)
+	}
+	processedfilename := processedcrashdir + "/" + c.CrashID + ".txt"
+	return ioutil.WriteFile(processedfilename, out, 0600)
 }
 
 func crashHandler(w http.ResponseWriter, r *http.Request) {
@@ -49,21 +59,19 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	crash := Crash {
 		ProductName: r.FormValue("ProductName"),
 		Version: r.FormValue("Version"),
-		CrashID: makecrashid(),
+		CrashID: MakeCrashID(),
+		Minidump: dumpfile,
 	}
-	log.Println("Crash collected: ", crash.CrashID, crash)
+	log.Println("Crash received: ", crash.CrashID, crash)
 	crash.saveMeta()
-	log.Println("Crash metdata saved: ", crash.CrashID)
-	filename := rawcrashdir + "/" + crash.CrashID + ".dump"
-	ioutil.WriteFile(filename, dumpfile, 0600)
+	log.Println("Crash metadata saved: ", crash.CrashID)
+	crash.saveDump()
 	log.Println("Crash dump saved: ", crash.CrashID)
-	var out, _ = crash.process()
-	processedfilename := processedcrashdir + "/" + crash.CrashID + ".txt"
-	ioutil.WriteFile(processedfilename, out, 0600)
+	crash.process()
 	log.Println("Crash processed: ", crash.CrashID)
 }
 
-func makecrashid() string {
+func MakeCrashID() string {
 	return uuid()
 }
 
