@@ -6,12 +6,13 @@ import (
 )
 
 func TestCrash(t *testing.T) {
-	crash := &Crash{
-		ProductName: "WaterWolf",
-		Version: "1.2.3",
-		Minidump: []byte("abcd"),
+	crashmeta := map[string] string {
+		"ProductName": "WaterWolf",
+		"Version": "1.2.3",
 	}
-	t.Log(crash)
+	minidump := []byte("abcd")
+	t.Log(crashmeta)
+	t.Log(minidump)
 	// TODO mock saveMeta
 	// TODO mock saveDump
 	// TODO mock process

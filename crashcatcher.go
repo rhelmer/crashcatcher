@@ -18,44 +18,37 @@ var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
 // number of cores available for processing
 var maxprocs = 1
 
-type Crash struct {
-	ProductName string
-	Version     string
-	CrashID     string
-	Minidump    []byte
-}
-
-func (c *Crash) saveMeta() error {
-	filename := rawcrashdir + "/" + c.CrashID + ".json"
-	b, err := json.Marshal(c)
+func saveMeta(crashid string, crashmeta map[string] string) error {
+	filename := rawcrashdir + "/" + crashid + ".json"
+	b, err := json.Marshal(crashmeta)
 	if err != nil {
 		return err
 	}
 	return ioutil.WriteFile(filename, b, 0600)
 }
 
-func (c *Crash) saveDump() error {
-	filename := rawcrashdir + "/" + c.CrashID + ".dump"
-	return ioutil.WriteFile(filename, c.Minidump, 0600)
+func saveDump(crashid string, minidump []byte) error {
+	filename := rawcrashdir + "/" + crashid + ".dump"
+	return ioutil.WriteFile(filename, minidump, 0600)
 }
 
 var procsem = make(chan int, maxprocs)
 
-func (c *Crash) process() {
+func process(crashid string, minidump []byte) {
 	procsem <- 1
 	out, err := exec.Command(mdswpath, "-m",
-		rawcrashdir+"/"+c.CrashID+".dump").Output()
+		rawcrashdir+"/"+crashid+".dump").Output()
 
 	if err != nil {
-		log.Println("ERROR during processing of", c.CrashID, err)
+		log.Println("ERROR during processing of", crashid, err)
 	}
-	processedfilename := processedcrashdir + "/" + c.CrashID + ".txt"
+	processedfilename := processedcrashdir + "/" + crashid + ".txt"
 	err = ioutil.WriteFile(processedfilename, out, 0600)
 	if err != nil {
-		log.Println("ERROR could not save processed crash", c.CrashID,
+		log.Println("ERROR could not save processed crash", crashid,
 			err)
 	}
-	log.Println("Crash processed and saved:", c.CrashID)
+	log.Println("Crash processed and saved:", crashid)
 	<-procsem
 }
 
@@ -65,31 +58,30 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	dumpfile, err := ioutil.ReadAll(file)
+	minidump, err := ioutil.ReadAll(file)
 	if err != nil {
 		fmt.Println(err)
 	}
-	crash := Crash{
-		ProductName: r.FormValue("ProductName"),
-		Version:     r.FormValue("Version"),
-		CrashID:     MakeCrashID(),
-		Minidump:    dumpfile,
+	crashid := MakeCrashID()
+	crashmeta := map[string] string {
+		"ProductName": r.FormValue("ProductName"),
+		"Version":     r.FormValue("Version"),
 	}
-	log.Println("Crash received: ", crash.CrashID)
-	if err := crash.saveMeta(); err != nil {
+	log.Println("Crash received: ", crashid)
+	if err := saveMeta(crashid, crashmeta); err != nil {
 		log.Fatal("ERROR could not save crash metadata:",
-			crash.CrashID, err)
+			crashid, err)
 	} else {
-		log.Println("Crash metadata saved: ", crash.CrashID)
+		log.Println("Crash metadata saved: ", crashid)
 	}
-	if err := crash.saveDump(); err != nil {
+	if err := saveDump(crashid, minidump); err != nil {
 		log.Fatal("ERROR could not save crash dump:",
-			crash.CrashID, err)
+			crashid, err)
 	} else {
-		log.Println("Crash dump saved:", crash.CrashID)
+		log.Println("Crash dump saved:", crashid)
 	}
-	go crash.process()
-	log.Println("Crash dump sent to processor:", crash.CrashID)
+	go process(crashid, minidump)
+	log.Println("Crash dump sent to processor:", crashid)
 }
 
 func MakeCrashID() string {
