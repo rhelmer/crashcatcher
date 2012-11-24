@@ -1,6 +1,12 @@
 Very minimal PoC breakpad crash collector/processor in Go.
 
-1. Build breakpad 
+Requirements:
+
+* C++ compiler (for breakpad)
+* Go compiler
+* 
+
+1. Build breakpad "minidump stackwalk" (for processing crashes)
 ```
   ./bin/build_breakpad.sh
 ```
