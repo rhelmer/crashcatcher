@@ -4,7 +4,6 @@ Requirements:
 
 * C++ compiler (for breakpad)
 * Go compiler
-* 
 
 1. Build breakpad "minidump stackwalk" (for processing crashes)
 ```
