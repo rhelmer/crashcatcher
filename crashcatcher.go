@@ -1,4 +1,4 @@
-package crashcatcher
+package main
 
 import (
 	"log"
