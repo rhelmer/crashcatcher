@@ -1,5 +1,4 @@
 *.swp
-crashes/*.dump
-crashes/*.json
-crasher
+crashdata
+crashcatcher
 build
