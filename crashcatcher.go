@@ -13,6 +13,7 @@ import (
 
 var rawcrashdir = "./crashes/raw"
 var processedcrashdir = "./crashes/processed"
+var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
 
 type Crash struct {
 	ProductName string
@@ -36,8 +37,7 @@ func (c *Crash) saveDump() error {
 }
 
 func (c *Crash) process() error {
-	var path = "./build/breakpad/bin/minidump_stackwalk"
-	out, err := exec.Command(path, "-m",
+	out, err := exec.Command(mdswpath, "-m",
 		rawcrashdir + "/" + c.CrashID + ".dump").Output()
 	if err != nil {
 		log.Println(err)
