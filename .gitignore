@@ -2,3 +2,4 @@
 crashes/*.dump
 crashes/*.json
 crasher
+build
