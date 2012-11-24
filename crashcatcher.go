@@ -11,6 +11,9 @@ import (
 	"os/exec"
 )
 
+var rawcrashdir = "./crashes/raw"
+var processedcrashdir = "./crashes/processed"
+
 type Crash struct {
 	ProductName string
 	Version string
@@ -18,7 +21,7 @@ type Crash struct {
 }
 
 func (c *Crash) saveMeta() error {
-	filename := "crashes/" + c.CrashID + ".json"
+	filename := rawcrashdir + "/" + c.CrashID + ".json"
 	b, err := json.Marshal(c)
 	if err != nil {
 		return err
@@ -28,7 +31,8 @@ func (c *Crash) saveMeta() error {
 
 func (c *Crash) process() ([]byte, error) {
 	var path = "./build/breakpad/bin/minidump_stackwalk"
-	out, err := exec.Command(path, "-m", "crashes/" + c.CrashID + ".dump").Output()
+	out, err := exec.Command(path, "-m",
+		rawcrashdir + "/" + c.CrashID + ".dump").Output()
 	return out, err
 }
 
@@ -50,11 +54,11 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Crash collected: ", crash.CrashID, crash)
 	crash.saveMeta()
 	log.Println("Crash metdata saved: ", crash.CrashID)
-	filename := "crashes/" + crash.CrashID + ".dump"
+	filename := rawcrashdir + "/" + crash.CrashID + ".dump"
 	ioutil.WriteFile(filename, dumpfile, 0600)
 	log.Println("Crash dump saved: ", crash.CrashID)
 	var out, _ = crash.process()
-	processedfilename := "crashes/processed/" + crash.CrashID + ".txt"
+	processedfilename := processedcrashdir + "/" + crash.CrashID + ".txt"
 	ioutil.WriteFile(processedfilename, out, 0600)
 	log.Println("Crash processed: ", crash.CrashID)
 }
