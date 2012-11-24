@@ -14,6 +14,8 @@ import (
 var rawcrashdir = "./crashdata/raw"
 var processedcrashdir = "./crashdata/processed"
 var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
+// number of cores available for processing
+var maxprocs = 1
 
 type Crash struct {
 	ProductName string
@@ -36,14 +38,24 @@ func (c *Crash) saveDump() error {
 	return ioutil.WriteFile(filename, c.Minidump, 0600)
 }
 
-func (c *Crash) process() error {
+var procsem = make(chan int, maxprocs)
+
+func (c *Crash) process() {
+	procsem <- 1
 	out, err := exec.Command(mdswpath, "-m",
 		rawcrashdir + "/" + c.CrashID + ".dump").Output()
+
 	if err != nil {
-		log.Println(err)
+		log.Println("ERROR during processing of", c.CrashID, err)
 	}
 	processedfilename := processedcrashdir + "/" + c.CrashID + ".txt"
-	return ioutil.WriteFile(processedfilename, out, 0600)
+	err = ioutil.WriteFile(processedfilename, out, 0600)
+	if err != nil {
+		log.Println("ERROR could not save processed crash", c.CrashID,
+			err)
+	}
+		log.Println("Crash processed and saved:", c.CrashID)
+	<-procsem
 }
 
 func crashHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,23 +76,19 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("Crash received: ", crash.CrashID)
 	if err := crash.saveMeta(); err != nil {
-		log.Println("ERROR could not save crash metadata:",
+		log.Fatal("ERROR could not save crash metadata:",
 			crash.CrashID, err)
 	} else {
 		log.Println("Crash metadata saved: ", crash.CrashID)
 	}
 	if err := crash.saveDump(); err != nil {
-		log.Println("ERROR could not save crash dump:",
+		log.Fatal("ERROR could not save crash dump:",
 			crash.CrashID, err)
 	} else {
 		log.Println("Crash dump saved:", crash.CrashID)
 	}
-	if err := crash.process(); err != nil {
-		log.Println("ERROR could not process crash:",
-			crash.CrashID, err)
-	} else {
-		log.Println("Crash processed: ", crash.CrashID)
-	}
+	go crash.process()
+	log.Println("Crash dump sent to processor:", crash.CrashID)
 }
 
 func MakeCrashID() string {
@@ -88,14 +96,14 @@ func MakeCrashID() string {
 }
 
 func uuid() string {
-        b := make([]byte, 16)
-        _, err := io.ReadFull(rand.Reader, b)
-        if err != nil {
-                log.Fatal(err)
-        }
-        b[6] = (b[6] & 0x0F) | 0x40
-        b[8] = (b[8] &^ 0x40) | 0x80
-        return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
+	b := make([]byte, 16)
+	_, err := io.ReadFull(rand.Reader, b)
+	if err != nil {
+		log.Fatal("Could not generate UUID", err)
+	}
+	b[6] = (b[6] & 0x0F) | 0x40
+	b[8] = (b[8] &^ 0x40) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 func main() {
