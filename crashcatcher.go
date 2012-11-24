@@ -63,12 +63,24 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 		Minidump: dumpfile,
 	}
 	log.Println("Crash received: ", crash.CrashID)
-	crash.saveMeta()
-	log.Println("Crash metadata saved: ", crash.CrashID)
-	crash.saveDump()
-	log.Println("Crash dump saved: ", crash.CrashID)
-	crash.process()
-	log.Println("Crash processed: ", crash.CrashID)
+	if err := crash.saveMeta(); err != nil {
+		log.Println("ERROR could not save crash metadata:",
+			crash.CrashID, err)
+	} else {
+		log.Println("Crash metadata saved: ", crash.CrashID)
+	}
+	if err := crash.saveDump(); err != nil {
+		log.Println("ERROR could not save crash dump:",
+			crash.CrashID, err)
+	} else {
+		log.Println("Crash dump saved:", crash.CrashID)
+	}
+	if err := crash.process(); err != nil {
+		log.Println("ERROR could not process crash:",
+			crash.CrashID, err)
+	} else {
+		log.Println("Crash processed: ", crash.CrashID)
+	}
 }
 
 func MakeCrashID() string {
