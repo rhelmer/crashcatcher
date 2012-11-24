@@ -11,8 +11,8 @@ import (
 	"os/exec"
 )
 
-var rawcrashdir = "./crashes/raw"
-var processedcrashdir = "./crashes/processed"
+var rawcrashdir = "./crashdata/raw"
+var processedcrashdir = "./crashdata/processed"
 var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
 
 type Crash struct {
