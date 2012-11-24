@@ -11,7 +11,7 @@ set -e
 
 # Checkout and build Breakpad
 echo "PREFIX: ${PREFIX:=`pwd`/build/breakpad}"
-mkdir build
+mkdir -p build
 cd build
 svn co http://google-breakpad.googlecode.com/svn/trunk google-breakpad
 cd google-breakpad
@@ -36,8 +36,19 @@ make BREAKPAD_SRCDIR=../google-breakpad BREAKPAD_OBJDIR=../google-breakpad
 cp exploitable ${PREFIX}/bin
 cd ..
 
+# Clone and build minidump_stackwalk server
+if test -d minidump-stackwalk; then
+  hg -R minidump-stackwalk pull -u
+else
+  hg clone http://hg.mozilla.org/users/tmielczarek_mozilla.com/minidump-stackwalk/
+fi
+cd minidump-stackwalk
+make
+cd ..
+
 # Optionally package everything up
 if test -z "${SKIP_TAR}"; then
   echo "Creating breakpad.tar.gz"
   tar -C ${PREFIX}/.. --mode 755 --owner 0 --group 0 -zcf breakpad.tar.gz `basename ${PREFIX}`
 fi
+cd ..
