@@ -15,7 +15,15 @@ import (
 	"net/http"
 	"os/exec"
 	"os"
+	"flag"
+	"path/filepath"
+	"runtime"
 )
+
+var processOnly *bool = flag.Bool("process-only", false,
+	"do not run HTTP server, process pending crashes only")
+var collectOnly *bool = flag.Bool("collect-only", false,
+	"run HTTP server and collect crashes, but do not process")
 
 // collected crashes are stored here first
 var incomingcrashdir = "./crashdata/incoming"
@@ -111,8 +119,12 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Println("Crash dump saved:", crashid)
 	}
-	go process(crashid, minidump)
-	log.Println("Crash dump sent to processor:", crashid)
+	if *collectOnly {
+		log.Println("Collect-only mode, not processing:", crashid)
+	} else {
+		go process(crashid, minidump)
+		log.Println("Crash dump sent to processor:", crashid)
+	}
 	fmt.Fprintf(w, "CrashID=bp-%v", crashid)
 }
 
@@ -135,11 +147,45 @@ func uuid() string {
 		b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
+func visit(path string, f os.FileInfo, err error) error {
+	extension := ".dump"
+	if filepath.Ext(f.Name()) == extension {
+		filename := filepath.Base(f.Name())
+		basename := filename[:len(filename)-len(extension)]
+		log.Println("found dump:", basename)
+		crashid := basename
+		file, err := os.Open(path)
+		if err != nil {
+			log.Println(err)
+		}
+		minidump, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Println(err)
+		}
+		go process(crashid, minidump)
+	}
+	return nil
+}
+
 func main() {
-	http.HandleFunc("/submit", crashHandler)
-	log.Println("Listening on port 8080")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Fatal("ListenAndServe:", err)
+	flag.Parse()
+	if *processOnly == true {
+		// FIXME rewrite workers so this isn't needed
+		defer runtime.Goexit()
+		log.Println("processing pending crashes")
+		err := filepath.Walk(incomingcrashdir, visit)
+		if err != nil {
+			log.Println(err)
+		}
+	} else {
+		if *collectOnly {
+			log.Println("Collect-only mode")
+		}
+		http.HandleFunc("/submit", crashHandler)
+		log.Println("Listening on port 8080")
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			log.Fatal("ListenAndServe:", err)
+		}
 	}
 }
