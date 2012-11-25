@@ -1,3 +1,6 @@
 *.swp
 crashcatcher
+crashdata/*/*.dump
+crashdata/*/*.json
+crashdata/*/*.txt
 build
