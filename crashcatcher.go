@@ -8,14 +8,14 @@ package main
 import (
 	"crypto/rand"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os/exec"
 	"os"
-	"flag"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 )
@@ -27,17 +27,21 @@ var collectOnly *bool = flag.Bool("collect-only", false,
 
 // collected crashes are stored here first
 var incomingcrashdir = "./crashdata/incoming"
+
 // after processing, collected crashes are moved here
 var rawcrashdir = "./crashdata/raw"
+
 // output from processing is stored here
 var processedcrashdir = "./crashdata/processed"
+
 // the minidump_stackwalk binary extracts information from minidumps
 var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
+
 // number of cores available for processing
 var maxprocs = 1
 
 // metadata received as key/value pairs is converted to JSON and stored
-func saveMeta(crashid string, crashmeta map[string] string) error {
+func saveMeta(crashid string, crashmeta map[string]string) error {
 	filename := incomingcrashdir + "/" + crashid + ".json"
 	b, err := json.Marshal(crashmeta)
 	if err != nil {
@@ -61,8 +65,8 @@ var procsem = make(chan int, maxprocs)
 func process(crashid string, minidump []byte) {
 	procsem <- 1
 	log.Println("start processing")
-	incomingjsonfilename := incomingcrashdir+"/"+crashid+".json"
-	incomingdumpfilename := incomingcrashdir+"/"+crashid+".dump"
+	incomingjsonfilename := incomingcrashdir + "/" + crashid + ".json"
+	incomingdumpfilename := incomingcrashdir + "/" + crashid + ".dump"
 	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
 	if err != nil {
 		log.Println("ERROR during processing of", crashid, err)
@@ -102,7 +106,7 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 	crashid := MakeCrashID()
-	crashmeta := map[string] string {
+	crashmeta := map[string]string{
 		"ProductName": r.FormValue("ProductName"),
 		"Version":     r.FormValue("Version"),
 	}
