@@ -1,3 +1,8 @@
+/*
+	crashcatcher is a server for collecting and processing crashes
+	in minidump format from the google breakpad client:
+	http://code.google.com/p/google-breakpad/
+*/
 package main
 
 import (
@@ -9,17 +14,23 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"os"
 )
 
+// collected crashes are stored here first
+var incomingcrashdir = "./crashdata/incoming"
+// after processing, collected crashes are moved here
 var rawcrashdir = "./crashdata/raw"
+// output from processing is stored here
 var processedcrashdir = "./crashdata/processed"
+// the minidump_stackwalk binary extracts information from minidumps
 var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
-
 // number of cores available for processing
 var maxprocs = 1
 
+// metadata received as key/value pairs is converted to JSON and stored
 func saveMeta(crashid string, crashmeta map[string] string) error {
-	filename := rawcrashdir + "/" + crashid + ".json"
+	filename := incomingcrashdir + "/" + crashid + ".json"
 	b, err := json.Marshal(crashmeta)
 	if err != nil {
 		return err
@@ -27,18 +38,24 @@ func saveMeta(crashid string, crashmeta map[string] string) error {
 	return ioutil.WriteFile(filename, b, 0600)
 }
 
+// minidump files are saved as-is
 func saveDump(crashid string, minidump []byte) error {
-	filename := rawcrashdir + "/" + crashid + ".dump"
+	filename := incomingcrashdir + "/" + crashid + ".dump"
 	return ioutil.WriteFile(filename, minidump, 0600)
 }
 
+// semaphore to limit number of processes per instance
 var procsem = make(chan int, maxprocs)
 
+// minidump_stackwalk prints pipe-delimited data on stdout.
+// this is expected to be called as a goroutine, and uses procsem to limit 
+// concurrent processors.
 func process(crashid string, minidump []byte) {
 	procsem <- 1
-	out, err := exec.Command(mdswpath, "-m",
-		rawcrashdir+"/"+crashid+".dump").Output()
-
+	log.Println("start processing")
+	incomingjsonfilename := incomingcrashdir+"/"+crashid+".json"
+	incomingdumpfilename := incomingcrashdir+"/"+crashid+".dump"
+	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
 	if err != nil {
 		log.Println("ERROR during processing of", crashid, err)
 	}
@@ -47,11 +64,25 @@ func process(crashid string, minidump []byte) {
 	if err != nil {
 		log.Println("ERROR could not save processed crash", crashid,
 			err)
+	} else {
+		log.Println("Crash processed and saved:", crashid)
+		log.Println("Crash raw archived:", crashid)
+		err = os.Rename(incomingjsonfilename,
+			rawcrashdir+"/"+crashid+".json")
+		if err != nil {
+			log.Println("ERROR could archive JSON", crashid, err)
+		}
+		err = os.Rename(incomingdumpfilename,
+			rawcrashdir+"/"+crashid+".dump")
+		if err != nil {
+			log.Println("ERROR could archive dump", crashid, err)
+		}
 	}
-	log.Println("Crash processed and saved:", crashid)
 	<-procsem
 }
 
+// handle "/submit" URLs, expect a mutlipart form with a few required fields
+// TODO unexpected fields should be stuffed into the JSON
 func crashHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Incoming crash")
 	var file, _, err = r.FormFile("upload_file_minidump")
@@ -85,10 +116,13 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "CrashID=bp-%v", crashid)
 }
 
+// TODO drop date onto last 4 digits of UUID
 func MakeCrashID() string {
 	return uuid()
 }
 
+// from this thread:
+// https://groups.google.com/d/topic/golang-nuts/d0nF_k4dSx4/discussion
 func uuid() string {
 	b := make([]byte, 16)
 	_, err := io.ReadFull(rand.Reader, b)
@@ -97,7 +131,8 @@ func uuid() string {
 	}
 	b[6] = (b[6] & 0x0F) | 0x40
 	b[8] = (b[8] &^ 0x40) | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 func main() {
