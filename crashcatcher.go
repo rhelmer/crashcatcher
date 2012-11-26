@@ -17,7 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"sync"
 )
 
 var processOnly *bool = flag.Bool("process-only", false,
@@ -59,6 +59,8 @@ func saveDump(crashid string, minidump []byte) error {
 // semaphore to limit number of processes per instance
 var procsem = make(chan int, maxprocs)
 
+var wg sync.WaitGroup
+
 // minidump_stackwalk prints pipe-delimited data on stdout.
 // this is expected to be called as a goroutine, and uses procsem to limit 
 // concurrent processors.
@@ -91,6 +93,9 @@ func process(crashid string, minidump []byte) {
 		}
 	}
 	<-procsem
+	if *processOnly {
+		wg.Done()
+	}
 }
 
 // handle "/submit" URLs, expect a mutlipart form with a few required fields
@@ -166,6 +171,7 @@ func visit(path string, f os.FileInfo, err error) error {
 		if err != nil {
 			log.Println(err)
 		}
+		wg.Add(1)
 		go process(crashid, minidump)
 	}
 	return nil
@@ -174,13 +180,13 @@ func visit(path string, f os.FileInfo, err error) error {
 func main() {
 	flag.Parse()
 	if *processOnly == true {
-		// FIXME "throw: all goroutines are asleep - deadlock!"
-		defer runtime.Goexit()
 		log.Println("processing pending crashes")
 		err := filepath.Walk(incomingcrashdir, visit)
 		if err != nil {
 			log.Println(err)
 		}
+		wg.Wait()
+		close(procsem)
 	} else {
 		if *collectOnly {
 			log.Println("Collect-only mode")
