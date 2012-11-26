@@ -36,6 +36,12 @@ var processOnly *bool = flag.Bool("process-only", false,
 var collectOnly *bool = flag.Bool("collect-only", false,
 	"run HTTP server and collect crashes, but do not process")
 
+type Crash struct {
+	CrashID	string
+	Meta	map[string][]string
+	Dump	[]byte
+}
+
 // TODO use hashed directory structure
 func crashdir(name string, crashid string, extension string) string {
 	dir := basecrashdir
@@ -57,9 +63,9 @@ func crashdir(name string, crashid string, extension string) string {
 }
 
 // metadata received as key/value pairs is converted to JSON and stored
-func saveMeta(crashid string, crashmeta map[string][]string) error {
-	filename := crashdir("incoming", crashid, "json")
-	b, err := json.Marshal(crashmeta)
+func (c *Crash) saveMeta() error {
+	filename := crashdir("incoming", c.CrashID, "json")
+	b, err := json.Marshal(c.Meta)
 	if err != nil {
 		return err
 	}
@@ -67,9 +73,9 @@ func saveMeta(crashid string, crashmeta map[string][]string) error {
 }
 
 // minidump files are saved as-is
-func saveDump(crashid string, minidump []byte) error {
-	filename := crashdir("incoming", crashid, "dump")
-	return ioutil.WriteFile(filename, minidump, 0600)
+func (c *Crash) saveDump() error {
+	filename := crashdir("incoming", c.CrashID, "dump")
+	return ioutil.WriteFile(filename, c.Dump, 0600)
 }
 
 // semaphore to limit number of processes per instance
@@ -80,32 +86,32 @@ var wg sync.WaitGroup
 // minidump_stackwalk prints pipe-delimited data on stdout.
 // this is expected to be called as a goroutine, and uses procsem to limit 
 // concurrent processors.
-func process(crashid string, minidump []byte) {
+func (c *Crash) process() {
 	procsem <- 1
 	log.Println("start processing")
-	incomingjsonfilename := crashdir("incoming", crashid, "json")
-	incomingdumpfilename := crashdir("incoming", crashid, "dump")
+	incomingjsonfilename := crashdir("incoming", c.CrashID, "json")
+	incomingdumpfilename := crashdir("incoming", c.CrashID, "dump")
 	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
 	if err != nil {
-		log.Println("ERROR during processing of", crashid, err)
+		log.Println("ERROR during processing of", c.CrashID, err)
 	}
-	processedfilename := crashdir("processed", crashid, "txt")
+	processedfilename := crashdir("processed", c.CrashID, "txt")
 	err = ioutil.WriteFile(processedfilename, out, 0600)
 	if err != nil {
-		log.Println("ERROR could not save processed crash", crashid,
+		log.Println("ERROR could not save processed crash", c.CrashID,
 			err)
 	} else {
-		log.Println("Crash processed and saved:", crashid)
-		log.Println("Crash raw archived:", crashid)
+		log.Println("Crash processed and saved:", c.CrashID)
+		log.Println("Crash raw archived:", c.CrashID)
 		err = os.Rename(incomingjsonfilename,
-			crashdir("raw", crashid, "json"))
+			crashdir("raw", c.CrashID, "json"))
 		if err != nil {
-			log.Println("ERROR could archive JSON", crashid, err)
+			log.Println("ERROR could archive JSON", c.CrashID, err)
 		}
 		err = os.Rename(incomingdumpfilename,
-			crashdir("raw", crashid, "dump"))
+			crashdir("raw", c.CrashID, "dump"))
 		if err != nil {
-			log.Println("ERROR could archive dump", crashid, err)
+			log.Println("ERROR could archive dump", c.CrashID, err)
 		}
 	}
 	<-procsem
@@ -131,14 +137,19 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	for k,v :=  range r.Form {
 		crashmeta[k] = v
 	}
+	crash := Crash{
+		CrashID: crashid,
+		Meta: crashmeta,
+		Dump: minidump,
+	}
 	log.Println("Crash received: ", crashid)
-	if err := saveMeta(crashid, crashmeta); err != nil {
+	if err := crash.saveMeta(); err != nil {
 		log.Fatal("ERROR could not save crash metadata:",
 			crashid, err)
 	} else {
 		log.Println("Crash metadata saved: ", crashid)
 	}
-	if err := saveDump(crashid, minidump); err != nil {
+	if err := crash.saveDump(); err != nil {
 		log.Fatal("ERROR could not save crash dump:",
 			crashid, err)
 	} else {
@@ -147,7 +158,7 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 	if *collectOnly {
 		log.Println("Collect-only mode, not processing:", crashid)
 	} else {
-		go process(crashid, minidump)
+		go crash.process()
 		log.Println("Crash dump sent to processor:", crashid)
 	}
 	fmt.Fprintf(w, "CrashID=bp-%v", crashid)
@@ -188,7 +199,11 @@ func visit(path string, f os.FileInfo, err error) error {
 			log.Println(err)
 		}
 		wg.Add(1)
-		go process(crashid, minidump)
+		crash := Crash{
+			CrashID: crashid,
+			Dump: minidump,
+		}
+		go crash.process()
 	}
 	return nil
 }
@@ -197,7 +212,7 @@ func main() {
 	flag.Parse()
 	if *processOnly == true {
 		log.Println("processing pending crashes")
-		err := filepath.Walk(basecrashdir + "./incoming", visit)
+		err := filepath.Walk(basecrashdir + "/incoming", visit)
 		if err != nil {
 			log.Println(err)
 		}
