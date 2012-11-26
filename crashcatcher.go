@@ -88,7 +88,7 @@ var wg sync.WaitGroup
 // concurrent processors.
 func (c *Crash) process() {
 	procsem <- 1
-	log.Println("start processing")
+	log.Println("start processing", c.CrashID)
 	incomingjsonfilename := crashdir("incoming", c.CrashID, "json")
 	incomingdumpfilename := crashdir("incoming", c.CrashID, "dump")
 	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
