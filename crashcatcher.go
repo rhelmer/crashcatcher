@@ -174,7 +174,7 @@ func visit(path string, f os.FileInfo, err error) error {
 func main() {
 	flag.Parse()
 	if *processOnly == true {
-		// FIXME rewrite workers so this isn't needed
+		// FIXME "throw: all goroutines are asleep - deadlock!"
 		defer runtime.Goexit()
 		log.Println("processing pending crashes")
 		err := filepath.Walk(incomingcrashdir, visit)
