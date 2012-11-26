@@ -25,3 +25,10 @@ Requirements:
 ```
   ./bin/submit.sh 
 ```
+
+crashcatcher can also be run in "collect only" or "process only" modes,
+see:
+```
+  ./crashcatcher --help
+```
+for details.
