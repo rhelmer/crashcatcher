@@ -20,29 +20,45 @@ import (
 	"sync"
 )
 
+const (
+	// the minidump_stackwalk binary extracts information from minidumps
+	mdswpath = "./build/breakpad/bin/minidump_stackwalk"
+
+	// number of cores available for processing
+	maxprocs = 1
+
+	// base directory for crash data
+	basecrashdir = "./crashdata"
+)
+
 var processOnly *bool = flag.Bool("process-only", false,
 	"do not run HTTP server, process pending crashes only")
 var collectOnly *bool = flag.Bool("collect-only", false,
 	"run HTTP server and collect crashes, but do not process")
 
-// collected crashes are stored here first
-var incomingcrashdir = "./crashdata/incoming"
-
-// after processing, collected crashes are moved here
-var rawcrashdir = "./crashdata/raw"
-
-// output from processing is stored here
-var processedcrashdir = "./crashdata/processed"
-
-// the minidump_stackwalk binary extracts information from minidumps
-var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
-
-// number of cores available for processing
-var maxprocs = 1
+// TODO use hashed directory structure
+func crashdir(name string, crashid string, extension string) string {
+	dir := basecrashdir
+	switch(name) {
+		// collected crashes are stored here first
+		case "incoming":
+			dir = dir + "/incoming"
+		// after processing, collected crashes are moved here
+		case "raw":
+			dir = dir + "/raw"
+		// output from processing is stored here
+		case "processed":
+			dir = dir + "/processed"
+		default:
+			log.Fatal("Crash dir not recognized:",name)
+	}
+	crashfile := dir + "/" + crashid + "." + extension
+	return crashfile
+}
 
 // metadata received as key/value pairs is converted to JSON and stored
-func saveMeta(crashid string, crashmeta map[string]string) error {
-	filename := incomingcrashdir + "/" + crashid + ".json"
+func saveMeta(crashid string, crashmeta map[string][]string) error {
+	filename := crashdir("incoming", crashid, "json")
 	b, err := json.Marshal(crashmeta)
 	if err != nil {
 		return err
@@ -52,7 +68,7 @@ func saveMeta(crashid string, crashmeta map[string]string) error {
 
 // minidump files are saved as-is
 func saveDump(crashid string, minidump []byte) error {
-	filename := incomingcrashdir + "/" + crashid + ".dump"
+	filename := crashdir("incoming", crashid, "dump")
 	return ioutil.WriteFile(filename, minidump, 0600)
 }
 
@@ -67,13 +83,13 @@ var wg sync.WaitGroup
 func process(crashid string, minidump []byte) {
 	procsem <- 1
 	log.Println("start processing")
-	incomingjsonfilename := incomingcrashdir + "/" + crashid + ".json"
-	incomingdumpfilename := incomingcrashdir + "/" + crashid + ".dump"
+	incomingjsonfilename := crashdir("incoming", crashid, "json")
+	incomingdumpfilename := crashdir("incoming", crashid, "dump")
 	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
 	if err != nil {
 		log.Println("ERROR during processing of", crashid, err)
 	}
-	processedfilename := processedcrashdir + "/" + crashid + ".txt"
+	processedfilename := crashdir("processed", crashid, "txt")
 	err = ioutil.WriteFile(processedfilename, out, 0600)
 	if err != nil {
 		log.Println("ERROR could not save processed crash", crashid,
@@ -82,12 +98,12 @@ func process(crashid string, minidump []byte) {
 		log.Println("Crash processed and saved:", crashid)
 		log.Println("Crash raw archived:", crashid)
 		err = os.Rename(incomingjsonfilename,
-			rawcrashdir+"/"+crashid+".json")
+			crashdir("raw", crashid, "json"))
 		if err != nil {
 			log.Println("ERROR could archive JSON", crashid, err)
 		}
 		err = os.Rename(incomingdumpfilename,
-			rawcrashdir+"/"+crashid+".dump")
+			crashdir("raw", crashid, "dump"))
 		if err != nil {
 			log.Println("ERROR could archive dump", crashid, err)
 		}
@@ -99,7 +115,6 @@ func process(crashid string, minidump []byte) {
 }
 
 // handle "/submit" URLs, expect a mutlipart form with a few required fields
-// TODO unexpected fields should be stuffed into the JSON
 func crashHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Incoming crash")
 	var file, _, err = r.FormFile("upload_file_minidump")
@@ -111,9 +126,10 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 	crashid := MakeCrashID()
-	crashmeta := map[string]string{
-		"ProductName": r.FormValue("ProductName"),
-		"Version":     r.FormValue("Version"),
+	log.Println(r.Form)
+	crashmeta := map[string][]string{}
+	for k,v :=  range r.Form {
+		crashmeta[k] = v
 	}
 	log.Println("Crash received: ", crashid)
 	if err := saveMeta(crashid, crashmeta); err != nil {
@@ -181,7 +197,7 @@ func main() {
 	flag.Parse()
 	if *processOnly == true {
 		log.Println("processing pending crashes")
-		err := filepath.Walk(incomingcrashdir, visit)
+		err := filepath.Walk(basecrashdir + "./incoming", visit)
 		if err != nil {
 			log.Println(err)
 		}
