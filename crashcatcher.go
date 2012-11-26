@@ -41,7 +41,7 @@ var mdswpath = "./build/breakpad/bin/minidump_stackwalk"
 var maxprocs = 1
 
 // metadata received as key/value pairs is converted to JSON and stored
-func saveMeta(crashid string, crashmeta map[string]string) error {
+func saveMeta(crashid string, crashmeta map[string][]string) error {
 	filename := incomingcrashdir + "/" + crashid + ".json"
 	b, err := json.Marshal(crashmeta)
 	if err != nil {
@@ -94,7 +94,6 @@ func process(crashid string, minidump []byte) {
 }
 
 // handle "/submit" URLs, expect a mutlipart form with a few required fields
-// TODO unexpected fields should be stuffed into the JSON
 func crashHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Incoming crash")
 	var file, _, err = r.FormFile("upload_file_minidump")
@@ -106,9 +105,10 @@ func crashHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 	crashid := MakeCrashID()
-	crashmeta := map[string]string{
-		"ProductName": r.FormValue("ProductName"),
-		"Version":     r.FormValue("Version"),
+	log.Println(r.Form)
+	crashmeta := map[string][]string{}
+	for k,v :=  range r.Form {
+		crashmeta[k] = v
 	}
 	log.Println("Crash received: ", crashid)
 	if err := saveMeta(crashid, crashmeta); err != nil {
