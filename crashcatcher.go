@@ -22,7 +22,7 @@ import (
 
 const (
 	// the minidump_stackwalk binary extracts information from minidumps
-	mdswpath = "./build/breakpad/bin/minidump_stackwalk"
+	mdswpath = "./build/minidump-stackwalk/stackwalker"
 
 	// number of cores available for processing
 	maxprocs = 1
@@ -91,11 +91,11 @@ func (c *Crash) process() {
 	log.Println("start processing", c.CrashID)
 	incomingjsonfilename := crashdir("incoming", c.CrashID, "json")
 	incomingdumpfilename := crashdir("incoming", c.CrashID, "dump")
-	out, err := exec.Command(mdswpath, "-m", incomingdumpfilename).Output()
+	out, err := exec.Command(mdswpath, incomingdumpfilename).Output()
 	if err != nil {
 		log.Println("ERROR during processing of", c.CrashID, err)
 	}
-	processedfilename := crashdir("processed", c.CrashID, "txt")
+	processedfilename := crashdir("processed", c.CrashID, "json")
 	err = ioutil.WriteFile(processedfilename, out, 0600)
 	if err != nil {
 		log.Println("ERROR could not save processed crash", c.CrashID,
